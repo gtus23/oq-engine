@@ -543,7 +543,11 @@ class GMPE(GroundShakingIntensityModel):
                 for gsim in self.gsims:
                     gsim.set_coeffs(imts)
             elif isinstance(value, CoeffsTable):
-                setattr(self, attr, value.on(imts))
+                try:
+                    setattr(self, attr, value.on(imts))
+                except Exception as exc:
+                    raise exc.__class__('%s[%s]' % (attr, exc)).with_traceback(
+                        exc.__traceback__)
 
     def set_parameters(self):
         """
