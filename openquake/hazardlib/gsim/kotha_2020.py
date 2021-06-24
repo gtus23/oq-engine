@@ -529,6 +529,7 @@ class KothaEtAl2020ESHM20(KothaEtAl2020):
     # the residual attenuation regions shown in Weatherill et al. (2020)
     C3_REGIONS = CoeffsTable(sa_damping=5, table="""\
         imt        region_1   tau_region_1       region_2   tau_region_2       region_3   tau_region_3       region_4   tau_region_4       region_5   tau_region_5
+        pgv     0               0              0              0              0              0              0              0              0              0
         pga     -0.45763990     0.12162060    -0.67064060     0.07538030    -0.94171710     0.10869170    -0.58146760     0.06361280    -0.06978450     0.11077130
         0.010   -0.45625230     0.12146360    -0.67063220     0.07654980    -0.93989760     0.10676080    -0.58019070     0.06459080    -0.09103080     0.12710680
         0.025   -0.42309710     0.11756810    -0.63522410     0.07630320    -0.90689690     0.11038900    -0.54050790     0.07589760    -0.12747550     0.16806130
@@ -584,7 +585,7 @@ class KothaEtAl2020ESHM20(KothaEtAl2020):
         # Default c3 and tau values to the original GMPE c3 and tau
         c3 = C["c3"] + np.zeros(sctx.region.shape)
         tau_c3 = C["tau_c3"] + np.zeros(sctx.region.shape)
-        if not np.any(sctx.region) or ("PGV" in str(imt)):
+        if not np.any(sctx.region) or imt.name == "PGV":
             # No regionalisation - take the default C3 and multiply tau_c3
             # by the original epsilon
             return (c3 + self.c3_epsilon * tau_c3) +\
