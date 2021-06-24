@@ -544,7 +544,7 @@ class GMPE(GroundShakingIntensityModel):
                     gsim.set_coeffs(imts)
             elif isinstance(value, CoeffsTable):
                 try:
-                    setattr(self, attr, value.on(imts))
+                    setattr(self, attr, value.coeff_by_imt(imts))
                 except Exception as exc:
                     raise exc.__class__('%s[%s]' % (attr, exc)).with_traceback(
                         exc.__traceback__)
@@ -785,7 +785,7 @@ class CoeffsTable(object):
         return {imt: self._coeffs[imt] for imt in self._coeffs
                 if imt.name != 'SA'}
 
-    def on(self, imts):
+    def coeff_by_imt(self, imts):
         """
         :param imts: a list of IMTs
         :returns: a dictionary IMT->struct for each IMT in the calculation

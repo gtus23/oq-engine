@@ -31,7 +31,6 @@ from openquake.baselib.node import Node as N, context
 from openquake.baselib.general import duplicated
 from openquake.hazardlib import valid, nrml, pmf, lt
 from openquake.hazardlib.gsim.mgmpe.avg_gmpe import AvgGMPE
-from openquake.hazardlib.gsim.base import CoeffsTable
 from openquake.hazardlib.imt import from_string
 
 BranchTuple = namedtuple('BranchTuple', 'trt id gsim weight effective')
