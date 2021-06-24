@@ -796,8 +796,13 @@ class CoeffsTable(object):
         try:  # see if already in cache
             return self._coeffs[imt]
         except KeyError:  # populate the cache
-            pass
+            self._coeffs[imt] = c = self.interp(imt)
+            return c
 
+    def interp(self, imt):
+        """
+        Interpolate the coefficients around the imt.period
+        """
         max_below = min_above = None
         for unscaled_imt in list(self.sa_coeffs):
             if unscaled_imt.damping != getattr(imt, 'damping', None):
@@ -819,9 +824,8 @@ class CoeffsTable(object):
         else:  # in the ACME project
             ratio = ((imt.period - max_below.period) /
                      (min_above.period - max_below.period))
-        below = self.sa_coeffs[max_below]
         above = self.sa_coeffs[min_above]
+        below = self.sa_coeffs[max_below]
         lst = [(above[n] - below[n]) * ratio + below[n]
                for n in self.tt.dtype.names]
-        self._coeffs[imt] = c = self.tt(*lst)
-        return c
+        return self.tt(*lst)
