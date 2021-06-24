@@ -254,20 +254,10 @@ class GsimLogicTree(object):
         """
         Make sure the IMTs are recognized by all GSIMs in the logic tree
         """
+        imts = [from_string(imt) for imt in imts]
         for trt in self.values:
             for gsim in self.values[trt]:
-                for attr in dir(gsim):
-                    coeffs = getattr(gsim, attr)
-                    if not isinstance(coeffs, CoeffsTable):
-                        continue
-                    for imt in imts:
-                        if imt.startswith('SA'):
-                            try:
-                                coeffs[from_string(imt)]
-                            except KeyError:
-                                raise ValueError(
-                                    '%s is out of the period range defined '
-                                    'for %s' % (imt, gsim))
+                gsim.set_coeffs(imts)
 
     def __toh5__(self):
         weights = set()

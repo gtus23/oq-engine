@@ -20,7 +20,6 @@ import os
 import abc
 import copy
 import time
-import inspect
 import logging
 import warnings
 import itertools
@@ -142,6 +141,25 @@ def float_struct(*allnames):
     return numpy.dtype([(n, numpy.float64) for n in ns])
 
 
+def coeff_array(imt2rec, imts):
+    """
+    From a dictionary of records to a structured array of coefficients
+    """
+    first = imt2rec[next(iter(imt2rec))]
+    names = first.dtype.names
+    dtlist = [('imt', 'S12'), ('period', float)] + [
+        (name, float) for name in names]
+    array = numpy.zeros(len(imts), dtlist)
+    for m, imt in enumerate(imts):
+        arr = array[m]
+        rec = imt2rec[imt]
+        arr['imt'] = imt.name
+        arr['period'] = imt.period
+        for n in names:
+            arr[n] = rec[n]
+    return array
+
+
 class ContextMaker(object):
     """
     A class to manage the creation of contexts for distances, sites, rupture.
@@ -194,9 +212,10 @@ class ContextMaker(object):
                                            gsim.REQUIRES_RUPTURE_PARAMETERS,
                                            gsim.REQUIRES_SITES_PARAMETERS,
                                            gsim.REQUIRES_DISTANCES))
-            clist = [table.on(self.imts)
-                     for name, table in inspect.getmembers(gsim.__class__)
-                     if table.__class__.__name__ == "CoeffsTable"]
+            gsim.set_coeffs(self.imts)
+            clist = [coeff_array(val, self.imts)
+                     for key, val in vars(gsim).items()
+                     if key.startswith("COEFFS")]
             self.clist.append(clist)
         self.mon = monitor
         self.ctx_mon = monitor('make_contexts', measuremem=False)

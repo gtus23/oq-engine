@@ -531,6 +531,20 @@ class GMPE(GroundShakingIntensityModel):
             return fname_or_file
         return open(fname_or_file, 'rb')
 
+    def set_coeffs(self, imts):
+        """
+        Attach dictionaries of coefficients to self
+        """
+        for attr in dir(self):
+            value = getattr(self, attr)
+            if attr == 'gmpe':
+                self.gmpe.set_coeffs(imts)
+            elif attr == 'gsims':
+                for gsim in self.gsims:
+                    gsim.set_coeffs(imts)
+            elif isinstance(value, CoeffsTable):
+                setattr(self, attr, value.on(imts))
+
     def set_parameters(self):
         """
         Combines the parameters of the GMPE provided at the construction level
@@ -770,22 +784,18 @@ class CoeffsTable(object):
     def on(self, imts):
         """
         :param imts: a list of IMTs
-        :returns: a structured array with the coefficients for each IMT
+        :returns: a dictionary IMT->struct for each IMT in the calculation
         """
-        arr = numpy.zeros(len(imts), self.dt)
         for m, imt in enumerate(imts):
-            arr[m]['imt'] = imt.name
-            arr[m]['period'] = imt.period
-            rec = self[imt]
-            for n in self.dt.names[2:]:
-                arr[m][n] = rec[n]
-        return arr
+            if imt not in self._coeffs:
+                self._coeffs[imt] = self.interp(imt)
+        return self._coeffs.copy()
 
     def __getitem__(self, imt):
         """
-        Return a dictionary of coefficients corresponding to ``imt``
+        Return a struct of coefficients corresponding to ``imt``
         from this table (if there is a line for requested IMT in it),
-        or the dictionary of interpolated coefficients, if ``imt`` is
+        or a struct of interpolated coefficients, if ``imt`` is
         of type :class:`~openquake.hazardlib.imt.SA` and interpolation
         is possible.
 
@@ -793,11 +803,7 @@ class CoeffsTable(object):
             If ``imt`` is not available in the table and no interpolation
             can be done.
         """
-        try:  # see if already in cache
-            return self._coeffs[imt]
-        except KeyError:  # populate the cache
-            self._coeffs[imt] = c = self.interp(imt)
-            return c
+        return self._coeffs[imt]
 
     def interp(self, imt):
         """
