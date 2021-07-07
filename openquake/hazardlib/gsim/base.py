@@ -76,32 +76,30 @@ class AdaptedWarning(UserWarning):
 # will become shorter in the N dimension (number of affected sites), or to
 # collapse the ruptures, then _get_delta will be called less times
 # even numba can only give a 15% speedup (on my workstation)
-@compile("float64[:, :](float64[:, :, :], float64[:], float64, int64)")
-def _get_delta(mean_std, levels, truncation_level, L1):
+@compile("float64[:, :](float64[:, :], float64[:], float64)")
+def _get_delta(mean_std, levels, truncation_level):
     """
     Compute (iml - mean) / std for each level
     """
-    N = mean_std.shape[2]  # shape (2, M, N)
+    N = mean_std.shape[1]  # shape (2, N)
     L = len(levels)
     out = numpy.zeros((N, L))
     for lvl in range(L):
-        m = lvl // L1
         iml = levels[lvl]
         for s in range(N):
             if truncation_level == 0.:  # just compare imls to mean
-                out[s, lvl] = iml <= mean_std[0, m, s]
+                out[s, lvl] = iml <= mean_std[0, s]
             else:
-                out[s, lvl] = (iml - mean_std[0, m, s]) / mean_std[1, m, s]
+                out[s, lvl] = (iml - mean_std[0, s]) / mean_std[1, s]
     return out
 
 
-def _get_poes(mean_std, loglevels, truncation_level):
-    delta = _get_delta(mean_std, loglevels.array, truncation_level,
-                       loglevels.L1)
-    return _truncnorm_sf(truncation_level, delta)
+def _compute_poes(mean_std, loglevels, truncation_level, out):
+    delta = _get_delta(mean_std, loglevels, truncation_level)
+    out[:] = _truncnorm_sf(truncation_level, delta)
 
 
-OK_METHODS = 'compute get_mean_and_stddevs get_poes set_parameters'
+OK_METHODS = 'compute get_mean_and_stddevs compute_poes set_parameters'
 
 
 def bad_methods(clsdict):
@@ -399,7 +397,7 @@ class GMPE(GroundShakingIntensityModel):
                 setattr(self, key, val)
 
     # the ctxs are used in avg_poe_gmpe
-    def get_poes(self, mean_std, cmaker, ctxs=()):
+    def compute_poes(self, mean_std, cmaker, ctxs, out):
         """
         Calculate and return probabilities of exceedance (PoEs) of one or more
         intensity measure levels (IMLs) of one intensity measure type (IMT)
@@ -412,7 +410,7 @@ class GMPE(GroundShakingIntensityModel):
             A ContextMaker instance
         :param ctxs:
             Context objects used to compute mean_std
-        :returns:
+        :out:
             array of PoEs of shape (N, L)
         :raises ValueError:
             If truncation level is not ``None`` and neither non-negative
@@ -443,11 +441,13 @@ class GMPE(GroundShakingIntensityModel):
                 mean_stdi[1] *= f  # multiply stddev by factor
                 arr += w * _get_poes(mean_stdi, loglevels, trunclevel)
         else:  # regular case
-            arr = _get_poes(mean_std, loglevels, trunclevel)
+            L1 = loglevels.L1
+            for m, imt in enumerate(loglevels):
+                _compute_poes(mean_std[:, m], loglevels[imt], trunclevel,
+                              out[:, m * L1:m * L1 + L1])
         imtweight = getattr(self, 'weight', None)  # ImtWeight or None
         for imt in loglevels:
             if imtweight and imtweight.dic.get(imt) == 0:
                 # set by the engine when parsing the gsim logictree
                 # when 0 ignore the contribution: see _build_trts_branches
                 arr[:, loglevels(imt)] = 0
-        return arr
