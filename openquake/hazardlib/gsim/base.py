@@ -76,27 +76,26 @@ class AdaptedWarning(UserWarning):
 # will become shorter in the N dimension (number of affected sites), or to
 # collapse the ruptures, then _get_delta will be called less times
 # even numba can only give a 15% speedup (on my workstation)
-@compile("float64[:, :](float64[:, :], float64[:], float64)")
-def _get_delta(mean_std, levels, truncation_level):
+@compile("float64[:, :](float64[:, :], float64[:])")
+def _get_delta(mean_std, levels):
     """
     Compute (iml - mean) / std for each level
     """
     N = mean_std.shape[1]  # shape (2, N)
     L = len(levels)
     out = numpy.zeros((N, L))
-    for lvl in range(L):
-        iml = levels[lvl]
+    for lvl, iml in enumerate(levels):
         for s in range(N):
-            if truncation_level == 0.:  # just compare imls to mean
-                out[s, lvl] = iml <= mean_std[0, s]
-            else:
-                out[s, lvl] = (iml - mean_std[0, s]) / mean_std[1, s]
+            out[s, lvl] = (iml - mean_std[0, s]) / mean_std[1, s]
     return out
 
 
 def _compute_poes(mean_std, loglevels, truncation_level, out):
-    delta = _get_delta(mean_std, loglevels, truncation_level)
-    out[:] = _truncnorm_sf(truncation_level, delta)
+    if truncation_level == 0.:
+        out[:] = loglevels <= mean_std[0][:, None]
+    else:
+        delta = _get_delta(mean_std, loglevels)
+        out[:] = _truncnorm_sf(truncation_level, delta)
 
 
 OK_METHODS = 'compute get_mean_and_stddevs compute_poes set_parameters'
