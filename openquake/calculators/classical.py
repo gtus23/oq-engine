@@ -223,7 +223,8 @@ def classical(srcs, cmaker, monitor):
     cmaker.init_monitoring(monitor)
     dic = hazclassical(srcs, srcfilter, cmaker)
     pmap = dic.pop('pmap')
-    yield dict(pmap=pmap, grp_id=dic['grp_id'], source_id=dic.get('source_id'))
+    yield dict(pmap=pmap, grp_id=dic['grp_id'], source_id=dic.get('source_id'),
+               start=cmaker.start)
     yield dic
 
 
@@ -247,30 +248,6 @@ class Hazard:
             extreme.append((grp_id, trt, 0, smrs))
         self.extreme = numpy.array(extreme, grp_extreme_dt)
 
-    def init(self, pmaps, grp_id):
-        """
-        Initialize the pmaps dictionary with zeros, if needed
-        """
-        if grp_id not in pmaps:
-            L, G = self.imtls.size, len(self.cmakers[grp_id].gsims)
-            pmaps[grp_id] = ProbabilityMap.build(L, G, self.sids)
-            pmaps[grp_id].grp_id = grp_id
-
-    def store_poes(self, grp_id, pmap):
-        """
-        Store the pmap of the given group inside the _poes dataset
-        """
-        cmaker = self.cmakers[grp_id]
-        dset = self.datastore['_poes']
-        base.fix_ones(pmap)  # avoid saving PoEs == 1, fast
-        arr = numpy.array([pmap[sid].array for sid in pmap]).transpose(2, 0, 1)
-        for g, mat in enumerate(arr):
-            dset[cmaker.start + g] = mat  # shape NL
-        extreme = max(
-            get_extreme_poe(pmap[sid].array, self.imtls)
-            for sid in pmap)
-        self.extreme[grp_id]['extreme_poe'] = extreme
-
     def store_disagg(self, pmaps=None):
         """
         Store data inside disagg_by_grp (optionally disagg_by_src)
@@ -283,6 +260,12 @@ class Hazard:
                     rlzs_by_gsim = self.cmakers[pmap.grp_id].gsims
                     self.datastore['disagg_by_src'][..., self.srcidx[key]] = (
                         self.get_hcurves(pmap, rlzs_by_gsim))
+
+
+def store_poes(dstore, sids, poes, gidx):
+    mat = dstore['_poes'][gidx]  # shape NL
+    mat[sids] = 1. - (1. - mat[sids]) * (1. - poes)
+    dstore['_poes'][gidx] = mat
 
 
 @base.calculators.add('classical', 'preclassical', 'ucerf_classical')
@@ -334,14 +317,12 @@ class ClassicalCalculator(base.HazardCalculator):
                 # store the poes for the given source
                 acc[source_id.split(':')[0]] = pmap
             if pmap:
-                self.haz.init(acc, grp_id)
-                acc[grp_id] |= pmap
-
-        self.counts[grp_id] -= 1
-        if self.counts[grp_id] == 0:
-            with self.monitor('saving probability maps'):
-                if grp_id in acc:
-                    self.haz.store_poes(grp_id, acc.pop(grp_id))
+                with self.monitor('saving probability maps'):
+                    sids = U32(list(pmap))
+                    arr = numpy.array(
+                        [pmap[sid].array for sid in pmap]).transpose(2, 0, 1)
+                    for g, mat in enumerate(arr):
+                        store_poes(self.datastore, sids, mat, dic['start'] + g)
         return acc
 
     def create_dsets(self):
