@@ -521,7 +521,7 @@ class ClassicalCalculator(base.HazardCalculator):
         tiling = self.N > oq.max_sites_per_tile
         if tiling:
             ntiles = numpy.ceil(self.N / oq.max_sites_per_tile)
-            tiles = self.sitecol.split_in_tiles(ntiles)
+            tiles = self.sitecol.split_in_tiles(int(ntiles))
         else:
             tiles = [self.sitecol]
         self.tile_sizes = []
