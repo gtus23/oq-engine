@@ -57,6 +57,19 @@ def get_source_id(src):  # used in submit_tasks
     return src.source_id.split(':')[0]
 
 
+def get_ntasks(ctasks, weights):
+    """
+    :param ctasks: hint for the total number of tasks to generate
+    :param weights: weight for each grp_id
+    :returns: number of tasks per grp_id
+    """
+    tot = sum(weights)
+    ntasks = []
+    for w in weights:
+        ntasks.append(ctasks * w / tot)
+    return U16(numpy.ceil(ntasks))
+
+
 def store_ctxs(dstore, rupdata, grp_id):
     """
     Store contexts with the same magnitude in the datastore
@@ -499,6 +512,7 @@ class ClassicalCalculator(base.HazardCalculator):
         triples = []
         src_groups = self.csm.src_groups
         tot_weight = 0
+        weights = [0] * len(grp_ids)
         for grp_id in grp_ids:
             cmaker = cmakers[grp_id]
             gsims = cmaker.gsims
@@ -506,6 +520,7 @@ class ClassicalCalculator(base.HazardCalculator):
             for src in sg:
                 src.ngsims = len(gsims)
                 tot_weight += src.weight
+                weights[grp_id] += src.weight
                 if src.code == b'C' and src.num_ruptures > 20_000:
                     msg = ('{} is suspiciously large, containing {:_d} '
                            'ruptures with complex_fault_mesh_spacing={} km')
@@ -518,36 +533,13 @@ class ClassicalCalculator(base.HazardCalculator):
         logging.info('tot_weight={:_d}, max_weight={:_d}'.format(
             int(tot_weight), int(max_weight)))
 
-        tiling = self.N > oq.max_sites_per_tile
-        if tiling:
-            ntiles = numpy.ceil(self.N / oq.max_sites_per_tile)
-            tiles = self.sitecol.split_in_tiles(int(ntiles))
-        else:
-            tiles = [self.sitecol]
+        ntasks = get_ntasks(ct, weights)
         self.tile_sizes = []
-        for tile in tiles:
-            self.tile_sizes.append(len(tile))
-            if not tiling:
-                tile = None
-            for grp_id in grp_ids:
-                sg = src_groups[grp_id]
-                if sg.atomic:
-                    # do not split atomic groups
-                    triples.append((sg, tile, cmakers[grp_id]))
-                else:  # regroup the sources in blocks
-                    blks = (groupby(sg, get_source_id).values()
-                            if oq.disagg_by_src else
-                            block_splitter(
-                                sg, max_weight, get_weight, sort=True))
-                    blocks = list(blks)
-                    for block in blocks:
-                        logging.debug(
-                            'Sending %d source(s) with weight %d',
-                            len(block), sum(src.weight for src in block))
-                        triples.append((block, tile, cmakers[grp_id]))
-        if tiling:
-            logging.info('There are %d tiles of sizes %s',
-                         len(tiles), self.tile_sizes)
+        for grp_id in grp_ids:
+            sg = src_groups[grp_id]
+            for tile in self.sitecol.split_in_tiles(ntasks[grp_id]):
+                triples.append((sg.sources, tile, cmakers[grp_id]))
+                self.tile_sizes.append(len(tile))
         return triples
 
     def collect_hazard(self, acc, pmap_by_kind):
@@ -685,7 +677,7 @@ class ClassicalCalculator(base.HazardCalculator):
             postclassical, allargs,
             distribute='no' if self.few_sites else None,
             h5=self.datastore.hdf5,
-            slowdown=1 if N > 10_000 and ct > 500 else 0
+            slowdown=1 if N > 20_000 and ct > 256 else 0
         ).reduce(self.collect_hazard)
         for kind in sorted(self.hazard):
             logging.info('Saving %s', kind)  # very fast

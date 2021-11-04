@@ -423,6 +423,8 @@ class SiteCollection(object):
 
         :param hint: hint for how many tiles to generate (> 0)
         """
+        if len(self) <= hint:
+            return [self]
         tiles = []
         for i in range(hint):
             sc = SiteCollection.__new__(SiteCollection)
