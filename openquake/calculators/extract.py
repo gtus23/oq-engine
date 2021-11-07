@@ -564,6 +564,7 @@ def extract_gridded_sources(dstore, what):
 
 
 @extract.add('task_info')
+@extract.add('task_weight')
 def extract_task_info(dstore, what):
     """
     Extracts the task distribution. Use it as /extract/task_info?kind=classical
