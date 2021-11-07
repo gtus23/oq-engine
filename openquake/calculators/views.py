@@ -525,12 +525,13 @@ def stats(name, array, *extras):
     Returns statistics from an array of numbers.
 
     :param name: a descriptive string
-    :returns: (name, mean, rel_std, min, max, len)
+    :returns: (name, mean, rel_std, min, max, len, slowfac)
     """
     avg = numpy.mean(array)
     std = 'nan' if len(array) == 1 else '%d%%' % (numpy.std(array) / avg * 100)
+    max_ = numpy.max(array)
     return (name, len(array), avg, std,
-            numpy.min(array), numpy.max(array)) + extras
+            numpy.min(array), max_, max_/avg) + extras
 
 
 @view.add('num_units')
@@ -616,7 +617,7 @@ def view_task_info(token, dstore):
     if not data:
         return 'Not available'
     return numpy.array(
-        data, dt('operation-duration counts mean stddev min max'))
+        data, dt('operation-duration counts mean stddev min max slowfac'))
 
 
 @view.add('task_durations')

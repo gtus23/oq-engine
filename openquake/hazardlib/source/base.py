@@ -53,8 +53,8 @@ class BaseSeismicSource(metaclass=abc.ABCMeta):
         Source's tectonic regime. See :class:`openquake.hazardlib.const.TRT`.
     """
     trt_smr = 0  # set by the engine
-    nsites = 0  # set when filtering the source
-    ngsims = 1
+    nsites = delta = 0  # set when filtering the source
+    ngsims = 1  # set in preclassical
     min_mag = 0  # set in get_oqparams and CompositeSourceModel.filter
     splittable = True
     checksum = 0  # set in source_reader
@@ -66,19 +66,10 @@ class BaseSeismicSource(metaclass=abc.ABCMeta):
     @property
     def weight(self):
         """
-        Determine the source weight from the number of ruptures
+        Determine the source weight from .nsites, .ngsims and .delta
         """
-        # NB: for point sources .num_ruptures is preset in preclassical,
-        # and it is less than the real number of ruptures if the
-        # pointsource_distance is set
-        if not self.num_ruptures:
-            self.num_ruptures = self.count_ruptures()
-        w = self.num_ruptures * self.ngsims * (.1 if self.nsites == EPS else 1)
-        if hasattr(self, 'data'):  # nonparametric rupture
-            w *= 20  # increase weight 20 times
-        elif not hasattr(self, 'nodal_plane_distribution'):  # not pointlike
-            w *= 5  # increase weight of non point sources
-        return w
+        assert self.nsites + self.delta
+        return self.nsites * self.ngsims + self.delta
 
     @property
     def trt_smrs(self):

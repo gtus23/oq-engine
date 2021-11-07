@@ -23,8 +23,7 @@ from openquake.baselib import parallel
 from openquake.baselib.python3compat import encode
 from openquake.baselib.general import (
     AccumDict, block_splitter, groupby, get_nbytes_msg)
-from openquake.hazardlib.source.point import (
-    PointSource, grid_point_sources, msr_name)
+from openquake.hazardlib.source.point import grid_point_sources, msr_name
 from openquake.hazardlib.source.base import EPS, get_code2cls
 from openquake.hazardlib.sourceconverter import SourceGroup
 from openquake.hazardlib.calc.filters import split_source, SourceFilter
@@ -56,10 +55,13 @@ def run_preclassical(csm, oqparam, h5):
     sources_by_grp = groupby(
         csm.get_sources(atomic=False),
         lambda src: (src.grp_id, msr_name(src)))
+    ngsims = {trt: len(gsims) for trt, gsims
+              in csm.full_lt.gsim_lt.values.items()}
     param = dict(maximum_distance=oqparam.maximum_distance,
                  pointsource_distance=oqparam.pointsource_distance,
                  ps_grid_spacing=oqparam.ps_grid_spacing,
-                 split_sources=oqparam.split_sources)
+                 split_sources=oqparam.split_sources,
+                 ngsims=ngsims)
     srcfilter = SourceFilter(
         csm.sitecol.reduce(10000) if csm.sitecol else None,
         oqparam.maximum_distance)
@@ -107,7 +109,7 @@ def run_preclassical(csm, oqparam, h5):
     for sg in csm.src_groups:
         for src in sg:
             assert src.num_ruptures
-            assert src.nsites
+            assert src.nsites + src.delta
 
     # store ps_grid data, if any
     for key, sources in res.items():
@@ -136,10 +138,6 @@ def preclassical(srcs, srcfilter, params, monitor):
     calc_times = AccumDict(accum=numpy.zeros(4, F32))
     sources = []
     grp_id = srcs[0].grp_id
-    trt = srcs[0].tectonic_region_type
-    md = params['maximum_distance'](trt)
-    pd = (params['pointsource_distance'](trt)
-          if params['pointsource_distance'] else 0)
     with monitor('splitting sources'):
         # this can be slow
         for src in srcs:
@@ -160,29 +158,12 @@ def preclassical(srcs, srcfilter, params, monitor):
             arr[3] = monitor.task_no
     dic = grid_point_sources(sources, params['ps_grid_spacing'], monitor)
     with monitor('weighting sources'):
-        # this is normally fast
-        for src in dic[grp_id]:
-            if not src.nsites:  # filtered out
-                src.nsites = EPS
-            is_ps = isinstance(src, PointSource)
-            if is_ps and srcfilter.sitecol:
-                # NB: using cKDTree would not help, performance-wise
-                cdist = srcfilter.sitecol.get_cdist(src.location)
-                src.nsites = (cdist <= md + pd).sum() or EPS
-            src.num_ruptures = src.count_ruptures()
-            if pd and is_ps:
-                nphc = src.count_nphc()
-                if nphc > 1:
-                    close = (cdist <= pd * BUFFER).sum()
-                    far = src.nsites - close
-                    factor = (close + (far + EPS) / nphc) / (close + far + EPS)
-                    src.num_ruptures *= factor
+        srcfilter.set_weight(dic[grp_id], params['ngsims'])
     dic['calc_times'] = calc_times
     dic['before'] = len(sources)
     dic['after'] = len(dic[grp_id])
     if params['ps_grid_spacing']:
-        dic['ps_grid/%02d' % monitor.task_no] = [
-            src for src in dic[grp_id] if src.nsites > EPS]
+        dic['ps_grid/%02d' % monitor.task_no] = dic[grp_id]
     return dic
 
 

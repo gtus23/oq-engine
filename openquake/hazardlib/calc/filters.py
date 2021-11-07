@@ -431,22 +431,32 @@ class SourceFilter(object):
             if len(sids):
                 yield src, self.sitecol.filtered(sids)
 
-    def set_nsites(self, sources):
+    def set_weight(self, sources, ngsims):
         """
-        Set the nsites attribute on each source to the sum of the affected
-        sites
+        Set the .nsites attribute on each source to the sum of the affected
+        sites. Set also the .delta attribute and the .ngsims attribute.
         """
+        for src in sources:
+            src.num_ruptures = src.count_ruptures()
+            src.delta = src.num_ruptures * .1
+        trt_star = list(ngsims) == ['*']
         for src, sites in self.filter(sources):
+            if trt_star:
+                src.ngsims = ngsims['*']
+            else:
+                src.ngsims = ngsims[src.tectonic_region_type]
+            self.delta = src.num_ruptures * len(sites) * .1
             if hasattr(src, 'location'):  # fast lane for point sources
                 irups = src.iruptures(point_rup=True)
             else:
                 irups = src.iter_ruptures()
             src.nsites = 0
-            for rup in irups:
-                dists = get_distances(rup, sites, 'rrup')
-                idist = self.integration_distance(
-                    src.tectonic_region_type, rup.mag)
-                src.nsites += (dists <= idist).count()
+            if self.sitecol:
+                for rup in irups:
+                    dists = get_distances(rup, sites, 'rrup')
+                    idist = self.integration_distance(
+                        src.tectonic_region_type, rup.mag)
+                    src.nsites += (dists <= idist).sum()
 
     def __getitem__(self, slc):
         if slc.start is None and slc.stop is None:
